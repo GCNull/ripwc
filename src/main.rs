@@ -60,7 +60,7 @@ fn main() {
         let mut char_count = 0;
         let mut word_count = 0;
         let mut newline_count = 0;
-        let mut max_line_counter = 0;
+        // let mut max_line_counter = 0;
 
         if let Ok(open_f) = File::open(&i) {
             let reader = BufReader::new(open_f);
@@ -83,9 +83,9 @@ fn main() {
                 if app.words && j.as_ref().unwrap().is_ascii_whitespace() {
                     word_count += 1;
                 }
-                if app.max_line_length && !j.as_ref().unwrap().is_ascii_whitespace() {
-                    max_line_counter += 1;
-                }
+                // if app.max_line_length && !j.as_ref().unwrap().is_ascii_whitespace() {
+                //     max_line_counter += 1;
+                // }
                 // if app.max_line_length && j.as_ref().unwrap().is_ascii_whitespace() && max_line_counter > max_line_length {
                 //     max_line_length = max_line_counter;
                 //     max_line_counter = 0;
