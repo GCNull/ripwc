@@ -9,5 +9,11 @@ authors = ["GCNull"]
 [dependencies]
 clap = { version = "3.2.6", features = ["derive"] }
 
-rayon = "1.5.3"
 walkdir = "2.3.2"
+
+[profile.release]
+lto = 'fat'
+codegen-units = 1
+opt-level = 3
+panic = 'abort'
+incremental = true
