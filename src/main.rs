@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::{BufReader, Read};
 
 use clap::Parser;
@@ -7,31 +7,31 @@ use walkdir::WalkDir;
 #[derive(Parser)]
 #[clap(author="GCNull", version=env!("CARGO_PKG_VERSION"), about="A rewrite of the GNU coreutils 'wc' tool.", long_about = None)]
 struct Args {
-    #[clap(value_parser, help="The file or folder to scan", required=true)]
+    #[clap(value_parser, help="The file or folder to read", required=true)]
     file: Vec<String>,
 
-    #[clap(short='c', long, help="print the byte counts")]
+    #[clap(short='c', long, help="Print the byte counts")]
     bytes: bool,
 
-    #[clap(short='m', long, help="print the character counts")]
+    #[clap(short='m', long, help="Print the character counts")]
     chars: bool,
 
-    #[clap(short='l', long, help="print newline counts")]
+    #[clap(short='l', long, help="Print newline counts")]
     lines: bool,
 
-    #[clap(short='w', long, help="print word counts")]
+    #[clap(short='w', long, help="Print word counts")]
     words: bool,
 
-    #[clap(short='L', long, help="print maximum display width")]
+    #[clap(short='L', long, help="Print maximum display width")]
     max_line_length: bool,
 
-    #[clap(short='r', long, help="recursively search through folders and files")]
+    #[clap(short='r', long, help="Recursively search through folders and files")]
     recursive: bool,
 
-    #[clap(short='v', help="print verbose output")]
+    #[clap(short='v', help="Print verbose output")]
     verbose: bool,
 
-    #[clap(long="vv", help="print extra verbose output")]
+    #[clap(long="vv", help="Print extra verbose output")]
     verbose2: bool,
 }
 
@@ -42,90 +42,109 @@ fn main() {
     let mut total_char_count: usize = 0;
     let mut total_word_count: usize = 0;
     let mut total_newline_count: usize = 0;
-    // let mut total_max_line_counter: usize = 0;
+    let mut largest_maxline_length: usize = 0;
+
+    // Switch flags to true if all false. Default settings on 'wc'
+    if !app.bytes && !app.lines && !app.words && !app.chars && !app.max_line_length {
+        app.bytes = true;
+        app.lines = true;
+        app.words = true;
+    }
+    let mut file_opts = OpenOptions::new();
+    let mut written: bool = false;
 
     // Recursively go through directories. If recursion is false then stop after the first file is found
     for i in &app.file {
-        for entry in WalkDir::new(&i) {
+        for entry in WalkDir::new(&i).sort_by_file_name() {
             match entry {
                 Ok(path) => {
-                    if app.verbose && !path.path().is_file() { println!("Searching {:?}", path.path()) }
-                    if path.path().is_file() {
-                        if app.verbose { println!("Found {:?}", path.path().display()) }
-                        let i = path.path();
+                    if app.verbose {
+                        println!("Found {:?}", path.path().display())
+                    }
+                    let i = path.path();
 
-                        if app.verbose { println!("Opening {:?}", i) }
-                        let mut byte_count = 0;
-                        let mut char_count = 0;
-                        let mut word_count = 0;
-                        let mut newline_count = 0;
-                        // let mut max_line_counter = 0;
+                    if app.verbose {
+                        println!("Opening {:?}", i)
+                    }
+                    let mut byte_count = 0;
+                    let mut char_count = 0;
+                    let mut word_count = 0;
+                    let mut newline_count = 0;
+                    let mut maxline_length = 0;
 
-                        if let Ok(open_f) = File::open(i) {
-                            let data = open_f.metadata().unwrap().len();
-                            let reader = BufReader::new(open_f);
-                            for j in reader.bytes() {
-                                // Switch flags to true if all false. Default settings on 'wc'
-                                if !app.bytes && !app.lines && !app.words && !app.chars {
-                                    app.bytes = true;
-                                    app.lines = true;
-                                    app.words = true;
-                                }
+                    if let Ok(open_f) = file_opts.read(true).open(i) {
+                        let data = open_f.metadata().unwrap().len();
+                        let mut reader = BufReader::with_capacity(4096, open_f);
+                        let mut buffer = vec![0; data as usize];
 
+                        if let Ok(j) = reader.read(&mut buffer) {
+                            if j == 0 {
+                                println!("0 bytes {:?}", i);
+                            }
+
+                            let mut temp: usize = 0;
+                            for byte in &buffer {
                                 if app.bytes && !app.lines && !app.words && !app.chars {
                                     byte_count = data as usize;
                                     break;
-                                } else if app.bytes { byte_count = data as usize; }
+                                } else if app.bytes && !written {
+                                    byte_count = data as usize; written = true;
+                                }
 
-                                // if app.verbose { println!("0x{:X}", &j.as_ref().unwrap()) }
-
-                                if app.chars && j.as_ref().unwrap() != &0x0 {
+                                if app.chars && byte != &0 {
                                     char_count += 1;
-                                    // if app.verbose { println!("Found char 0x{:X}", &j.as_ref().unwrap()) }
-                                }
-                                if app.lines && j.as_ref().unwrap() == &0xA { // newline counter
-                                    newline_count += 1;
-                                    // if app.verbose { println!("Found newline 0x{:X}", &j.as_ref().unwrap()) }
-                                }
-                                if app.words && j.as_ref().unwrap().is_ascii_whitespace() {
-                                    word_count += 1;
-                                    // if app.verbose { println!("Found word 0x{:X}", &j.as_ref().unwrap()) }
                                 }
 
-                                // if app.max_line_length && !j.as_ref().unwrap().is_ascii_whitespace() {
-                                //     max_line_counter += 1;
-                                // }
-                                // if app.max_line_length && j.as_ref().unwrap().is_ascii_whitespace() && max_line_counter > max_line_length {
-                                //     max_line_length = max_line_counter;
-                                //     max_line_counter = 0;
-                                // }
+                                if app.lines && byte == &0xA { // newline counter
+                                    newline_count += 1;
+                                }
+
+                                if app.words && byte.is_ascii_whitespace() {
+                                    word_count += 1;
+                                }
+
+                                if app.max_line_length {
+                                    if byte == &0xA && temp >= maxline_length {
+                                        maxline_length = temp;
+
+                                        if maxline_length >= largest_maxline_length {
+                                            largest_maxline_length = maxline_length;
+                                        }
+                                    }
+                                    temp += 1;
+                                }
                             }
+
                             total_byte_count += byte_count;
                             total_char_count += char_count;
                             total_word_count += word_count;
                             total_newline_count += newline_count;
-                            // mut total_max_line_counter += max_line_counter;
                         }
+                    }
 
-                        if newline_count > 0 { result.push_str(&format!("newlines: {}", newline_count)) }
-                        if word_count > 0 { result.push_str(&format!(" words: {}", word_count)) }
-                        if char_count > 0 { result.push_str(&format!(" chars: {}", char_count)) }
-                        if byte_count > 0 { result.push_str(&format!(" bytes: {}", byte_count)) }
-                        // if max_line_length > 0 { result.push_str(&format!(" max line length: {}", max_line_length)) }
-                        println!("{} {:?}", result.trim(), i);
-                        result.clear();
-                        if !app.recursive { break }
+                    if newline_count > 0 { result.push_str(&format!("newlines: {}", newline_count)) }
+                    if word_count > 0 { result.push_str(&format!(" words: {}", word_count)) }
+                    if char_count > 0 { result.push_str(&format!(" chars: {}", char_count)) }
+                    if byte_count > 0 { result.push_str(&format!(" bytes: {}", byte_count)) }
+                    if maxline_length > 0 { result.push_str(&format!(" max line length: {}", maxline_length)) }
+
+                    println!("{} {:?}", result.trim(), i);
+                    result.clear();
+                    if !app.recursive {
+                        break
                     }
                 }
                 Err(e) => eprintln!("Error: {}", e),
             }
         }
-        if !app.recursive && app.file.len() > 1 { continue } else if !app.recursive && app.file.len() == 1 { break }
+        if !app.recursive && app.file.len() > 1 { continue }
+        else if !app.recursive && app.file.len() == 1 { break }
     }
     if total_newline_count > 0 { result.push_str(&format!("newlines: {}", total_newline_count)) }
     if total_word_count > 0 { result.push_str(&format!(" words: {}", total_word_count)) }
     if total_char_count > 0 { result.push_str(&format!(" chars: {}", total_char_count)) }
     if total_byte_count > 0 { result.push_str(&format!(" bytes: {}", total_byte_count)) }
-    // if max_line_length > 0 { result.push_str(&format!(" max line length: {}", max_line_length)) }
+    if largest_maxline_length > 0 { result.push_str(&format!(" max line length: {}", largest_maxline_length)) }
+
     println!("\n{} total", result.trim());
 }
